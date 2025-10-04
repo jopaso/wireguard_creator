@@ -11,6 +11,7 @@ function helpPanel(){
     echo -e "How to use: ${0} -<argument>"
     echo -e "\t-s: Create the configuration files and set up the vpn"
     echo -e "\t-c <name>: Create the configuration for a new user"
+    echo -e "\t-r <name>: Remove an user"
     
     exit 1
 }
@@ -55,12 +56,12 @@ function install_wg(){
 
 function create_server_key(){
     mkdir ${path}/server_keys
-    wg genkey | tee ${path}/server_keys/server_privatekey | wg pubkey > ${path}/server_keys/server_publickey
+    wg genkey | tee ${path}/server_keys/server_private.key | wg pubkey | tee ${path}/server_keys/server_public.key
     echo "[+] Server Keys created in directory ${path}/server_keys"
 }
 
 function create_wg_config_file() {
-    echo "Introduce the interface you want to use"
+    echo -e "Introduce the interface you want to use: "
     read interface
     echo -e "[Interface]
 Address = 10.0.0.1/32
@@ -68,7 +69,7 @@ SaveConfig = true
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o ${interface}  -j MASQUERADE;
 PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o ${interface} -j MASQUERADE;
 ListenPort = 51820
-PrivateKey = $(cat ${path}/server_keys/server_privatekey)" > ${path}/wg0.conf
+PrivateKey = $(cat ${path}/server_keys/server_private.key )" > ${path}/wg0.conf
 
     echo "[+] Wireguard configuration file created as ${path}/wg0.conf" 
 }
@@ -110,7 +111,7 @@ Address = 10.0.0.${addr}/32
 DNS = 8.8.8.8
 
 [Peer]
-PublicKey = $(cat ${path}/server_keys/server_publickey)
+PublicKey = $(cat ${path}/server_keys/server_public.key)
 Endpoint = ${ip}:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 30\n" > ${path}/client_keys/${name}_keys/wg_${name}.conf
@@ -147,7 +148,10 @@ function remove_client() {
     name=$1
     sed -i "/#${name}$/,+5d" "${path}/wg0.conf"
     rm -r ${path}/$client_keys/${name}_keys 2>/dev/null
+    
     systemctl restart wg-quick@wg0
+    wg-quick up wg0
+
     echo -e "[+] Client ${name} removed"
 }
 
@@ -165,6 +169,6 @@ elif [ "${1}" = "-r" ] && [ -n "${2}" ]; then
     remove_client $2
 
 else 
-    echo "[+] Argumento incorrecto"
+    echo "[+] Incorrect parameters"
     helpPanel
 fi
