@@ -52,6 +52,15 @@ function install_wg(){
     fi
 }
 
+function install_qrencode(){
+    which qrencode > /dev/null
+    code=$?
+
+    if [ "$code" -eq 1 ]; then
+       sudo apt-get install qrencode 
+    fi
+}
+
 ## Server_Creation
 
 function create_server_key(){
@@ -135,6 +144,7 @@ AllowedIPs = 10.0.0.${addr}/32\n" >> ${path}/wg0.conf
 }
 
 function create_client(){
+    install_qrencode
     name=$1
     create_client_keys $name
     addr=$(($(ls ${path}/client_keys/ | wc -l) + 1))
@@ -146,8 +156,9 @@ function create_client(){
 
 function remove_client() {
     name=$1
-    sed -i "/#${name}$/,+5d" "${path}/wg0.conf"
-    rm -r ${path}/$client_keys/${name}_keys 2>/dev/null
+    #sed -i "/#${name}$/,+5d" "${path}/wg0.conf"  #Removes the peer info
+    wg set wg0 peer $(cat ${path}/client_keys/${name}_keys/${name}_publickey) remove
+    rm -r ${path}/client_keys/${name}_keys 2>/dev/null
     
     systemctl restart wg-quick@wg0
     wg-quick up wg0
