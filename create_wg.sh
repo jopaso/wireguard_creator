@@ -15,6 +15,24 @@ function helpPanel(){
     exit 1
 }
 
+#Gets public ip
+get_public_ip() {
+    local ip
+    for service in \
+        "https://api.ipify.org" \
+        "https://ifconfig.me" \
+        "https://icanhazip.com" \
+        "https://checkip.amazonaws.com"
+    do
+        ip=$(curl -s --max-time 5 "$service")
+        if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$ip"
+            return 0
+        fi
+    done
+    return 1
+}
+
 #Cheks if the user is root (otherwise you can't write at /etc)
 function check_user(){
     user=$(whoami)
@@ -42,11 +60,13 @@ function create_server_key(){
 }
 
 function create_wg_config_file() {
+    echo "Introduce the interface you want to use"
+    read interface
     echo -e "[Interface]
 Address = 10.0.0.1/32
 SaveConfig = true
-PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o ens6  -j MASQUERADE;
-PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o ens6 -j MASQUERADE;
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o ${interface}  -j MASQUERADE;
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o ${interface} -j MASQUERADE;
 ListenPort = 51820
 PrivateKey = $(cat ${path}/server_keys/server_privatekey)" > ${path}/wg0.conf
 
@@ -83,6 +103,7 @@ function create_client_keys(){
 function create_client_file(){
     name=$1
     addr=$2
+    ip=$(get_public_ip)
     echo -e "[Interface]
 PrivateKey = $(cat ${path}/client_keys/${name}_keys/${name}_privatekey)
 Address = 10.0.0.${addr}/32
@@ -90,7 +111,7 @@ DNS = 8.8.8.8
 
 [Peer]
 PublicKey = $(cat ${path}/server_keys/server_publickey)
-Endpoint = 213.165.91.23:51820
+Endpoint = ${ip}:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 30\n" > ${path}/client_keys/${name}_keys/wg_${name}.conf
 
@@ -105,8 +126,7 @@ function add_client_conf() {
 
     echo -e "\n[Peer] #${name}
 PublicKey = $(cat ${path}/client_keys/${name}_keys/${name}_publickey)
-AllowedIPs = 10.0.0.${addr}/32
-Endpoint = 79.108.207.212:57785\n" >> ${path}/wg0.conf
+AllowedIPs = 10.0.0.${addr}/32\n" >> ${path}/wg0.conf
 
     wg set wg0 peer $(cat ${path}/client_keys/${name}_keys/${name}_publickey) allowed-ips 10.0.0.${addr}/32
     echo "[+] Added peer"
